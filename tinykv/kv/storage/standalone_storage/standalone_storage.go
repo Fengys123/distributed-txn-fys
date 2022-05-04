@@ -27,15 +27,28 @@ func (s *StandAloneStorage) Stop() error {
 
 func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {
 	// YOUR CODE HERE (lab1).
-	panic("not implemented yet")
-	return nil, nil
+	sr := reader{
+		txn: s.db.NewTransaction(false),
+	}
+	return &sr, nil
 }
 
 func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) error {
 	// YOUR CODE HERE (lab1).
 	// Try to check the definition of `storage.Modify` and txn interface of `badger`.
 	// As the column family is not supported by `badger`, a wrapper is used to simulate it.
-	panic("not implemented yet")
+	for _, m := range batch {
+		var err error = nil
+		switch m.Data.(type) {
+		case storage.Put:
+			err = engine_util.PutCF(s.db, m.Cf(), m.Key(), m.Value())
+		case storage.Delete:
+			err = engine_util.DeleteCF(s.db, m.Cf(), m.Key())
+		}
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -61,4 +74,23 @@ func (b *BadgerReader) IterCF(cf string) engine_util.DBIterator {
 
 func (b *BadgerReader) Close() {
 	b.txn.Discard()
+}
+
+type reader struct {
+	txn *badger.Txn
+}
+
+func (r *reader) GetCF(cf string, key []byte) ([]byte, error) {
+	res, err := engine_util.GetCFFromTxn(r.txn, cf, key)
+	if err == badger.ErrKeyNotFound {
+		res = nil
+	}
+	return res, err
+}
+
+func (r *reader) IterCF(cf string) engine_util.DBIterator {
+	return engine_util.NewCFIterator(cf, r.txn)
+}
+func (r *reader) Close() {
+	r.txn.Discard()
 }
